@@ -10,6 +10,7 @@ library(doParallel)
 library(tictoc)
 library(stm)
 library(jsonlite)
+library(RWeka)
 
 # Data Import and Cleaning
 # reddit_posts <- fromJSON("https://www.reddit.com/r/IOPsychology/top.json?t=year&limit=100")$data$children$data %>%
@@ -69,6 +70,13 @@ compare_them <- function(corpus_1, corpus_2) {
   cat(as.character(corpus_2[[row_id]]), "\n")
 }
 
+# Conversion into a DTM with ngram tokenization
+myTokenizer <- function(x) { NGramTokenizer(x, Weka_control(min=1, max=2)) }
+io_dtm <- DocumentTermMatrix(
+  io_corpus, 
+  control = list(tokenize = myTokenizer))
+io_slim_dtm <- removeSparseTerms(io_dtm)
+DTM_tbl <- io_slim_dtm %>% as.matrix %>% as_tibble
 
 # Visualization
 

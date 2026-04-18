@@ -10,8 +10,6 @@ library(doParallel)
 library(tictoc)
 library(stm)
 library(jsonlite)
-library(RWeka)
-library(rJava)
 
 # Data Import and Cleaning
 # reddit_posts <- fromJSON("https://www.reddit.com/r/IOPsychology/top.json?t=year&limit=100")$data$children$data %>%
@@ -43,7 +41,10 @@ remove_io_terms <- content_transformer(function(x) {
     str_replace_all("\\biopsychology\\b", " ") %>%
     str_replace_all("\\bindustrial\\s+and\\s+organizational\\s+psychology\\b", " ") %>%
     str_replace_all("\\bindustrial\\s+organizational\\s+psychology\\b", " ") %>%
-    str_replace_all("\\bindustrial[- ]organizational\\s+psychology\\b", " ")
+    str_replace_all("\\bindustrial[- ]organizational\\s+psychology\\b", " ") %>%
+    str_replace_all("\\bi\\s*/\\s*o\\b", " ") %>%
+    str_replace_all("\\bi\\s*-\\s*o\\b", " ") %>%
+    str_replace_all("\\bio\\b", " ")
 })
 
 io_corpus <- io_corpus_original %>%
@@ -68,13 +69,30 @@ compare_them <- function(corpus_1, corpus_2) {
   cat(as.character(corpus_2[[row_id]]), "\n")
 }
 
-# Conversion into a DTM with ngram tokenization
-myTokenizer <- function(x) { NGramTokenizer(x, Weka_control(min=1, max=2)) }
-io_dtm <- DocumentTermMatrix(
-  io_corpus, 
-  control = list(tokenize = myTokenizer))
-io_slim_dtm <- removeSparseTerms(io_dtm)
-DTM_tbl <- io_slim_dtm %>% as.matrix %>% as_tibble
+# Create a document id so each title stays linked to its row
+io_text_tbl <- tibble(
+  document = 1:length(io_corpus),
+  text = sapply(io_corpus, as.character)
+)
+
+# Unigrams
+io_unigram_tbl <- io_text_tbl %>%
+  unnest_tokens(term, text, token = "words") %>%
+  count(document, term)
+
+# Bigrams
+io_bigram_tbl <- io_text_tbl %>%
+  unnest_tokens(term, text, token = "ngrams", n = 2) %>%
+  count(document, term)
+
+# Combine into one DTM called io_dtm
+io_dtm <- bind_rows(io_unigram_tbl, io_bigram_tbl) %>%
+  group_by(document, term) %>%
+  summarise(n = sum(n), .groups = "drop") %>%
+  cast_dtm(document, term, n)
+
+# Sparsity trimming
+io_slim_dtm <- removeSparseTerms(io_dtm, .97)
 
 # Visualization
 

@@ -92,13 +92,41 @@ io_dtm <- bind_rows(io_unigram_tbl, io_bigram_tbl) %>%
 io_slim_dtm <- removeSparseTerms(io_dtm, .97)
 io_slim_dtm_tbl <- io_slim_dtm %>% as.matrix %>% as_tibble
 
-# Word cloud!
+# Visualization
+# Word cloud
 wordCounts <- colSums(io_slim_dtm_tbl)
 wordNames <- names(io_slim_dtm_tbl)
 wordcloud::wordcloud(wordNames, wordCounts, max.words = 50)
 
-# Visualization
-
 # Analysis
+# Topic analysis 
+dfm2stm <- readCorpus(io_slim_dtm, type="slam")
+kresult <- searchK(
+  dfm2stm$documents,
+  dfm2stm$vocab,
+  K = seq(2, 20, by = 2)
+)
+
+png("../figs/kresult_plot.png", width = 1200, height = 900, res = 150)
+par(mar = c(4, 4, 1, 1))
+plot(kresult)
+dev.off()
+
+topic_model <- stm(dfm2stm$documents, 
+                   dfm2stm$vocab, 
+                   7)
+
 
 # Publication
+# Interpretation of topic analysis
+labelTopics(topic_model, n=10)
+findThoughts(topic_model, texts=week12_tbl$documents, n=3)
+png("../figs/topic_model_summary.png", width = 1200, height = 900, res = 150)
+par(mar = c(4, 4, 1, 1))
+plot(topic_model, type = "summary", n = 5)
+dev.off()
+topicCorr(topic_model)
+png("../figs/topic_corr_plot.png", width = 1200, height = 900, res = 150)
+par(mar = c(4, 4, 1, 1))
+plot(topicCorr(topic_model))
+dev.off()

@@ -41,10 +41,7 @@ remove_io_terms <- content_transformer(function(x) {
     str_replace_all("\\biopsychology\\b", " ") %>%
     str_replace_all("\\bindustrial\\s+and\\s+organizational\\s+psychology\\b", " ") %>%
     str_replace_all("\\bindustrial\\s+organizational\\s+psychology\\b", " ") %>%
-    str_replace_all("\\bindustrial[- ]organizational\\s+psychology\\b", " ") %>%
-    str_replace_all("\\bi\\s*/\\s*o\\b", " ") %>%
-    str_replace_all("\\bi\\s*-\\s*o\\b", " ") %>%
-    str_replace_all("\\bio\\b", " ")
+    str_replace_all("\\bindustrial[- ]organizational\\s+psychology\\b", " ")
 })
 
 io_corpus <- io_corpus_original %>%

@@ -10,20 +10,45 @@ library(doParallel)
 library(tictoc)
 library(stm)
 library(jsonlite)
+library(caret)
+library(Matrix)
 
 # Data Import and Cleaning
-# reddit_posts <- fromJSON("https://www.reddit.com/r/IOPsychology/top.json?t=year&limit=100")$data$children$data %>%
-#   as_tibble()
-
-# week12_tbl <- reddit_posts %>%
-#   select(upvotes = ups, title)
-
-# save the downloaded data files to data subfolder
+# url <- "https://www.reddit.com/r/IOPsychology/new.json?limit=100"
+# after <- NULL
+# every_post <- list()
+# cutoff_time <- Sys.time() - as.difftime(365, units = "days")
+# done <- FALSE
+# 
+# while (!done) {
+#   full_url <- paste0(url, if (!is.null(after)) paste0("&after=", after) else "")
+#   res <- fromJSON(full_url)
+#   posts <- res$data$children$data %>%
+#     as_tibble()
+#   
+#   every_post[[length(every_post) + 1]] <- posts
+#   after <- res$data$after
+#   
+#   oldest_post <- min(as.POSIXct(posts$created_utc, origin = "1970-01-01", tz = "UTC"))
+#   if (is.null(after) || oldest_post <= cutoff_time) {
+#     done <- TRUE
+#   }
+#   
+#   Sys.sleep(1)
+# }
+# 
+# reddit_posts <- bind_rows(every_post)
 # saveRDS(reddit_posts, "../data/reddit_posts.rds")
+# 
+# week12_tbl <- reddit_posts %>%
+#   select(title, upvotes = ups, created_utc) %>%
+#   mutate(created_utc = as.POSIXct(created_utc, origin = "1970-01-01", tz = "UTC")) %>%
+#   filter(created_utc > cutoff_time) %>%
+#   select(upvotes, title)
 # write_csv(week12_tbl, "../data/week12_tbl.csv")
 
 # add code to import those files instead of downloading again
-reddit_posts <- read_csv("../data/reddit_posts.csv")
+reddit_posts <- readRDS("../data/reddit_posts.rds")
 week12_tbl <- read_csv("../data/week12_tbl.csv")
 
 # Create corpus
@@ -66,6 +91,8 @@ compare_them <- function(corpus_1, corpus_2) {
   cat(as.character(corpus_2[[row_id]]), "\n")
 }
 
+compare_them(io_corpus_original, io_corpus)
+
 # Create a document id so each title stays linked to its row
 io_text_tbl <- tibble(
   document = 1:length(io_corpus),
@@ -84,13 +111,25 @@ io_bigram_tbl <- io_text_tbl %>%
 
 # Combine into one DTM called io_dtm
 io_dtm <- bind_rows(io_unigram_tbl, io_bigram_tbl) %>%
+  filter(!is.na(term), term != "") %>%
   group_by(document, term) %>%
   summarise(n = sum(n), .groups = "drop") %>%
   cast_dtm(document, term, n)
 
 # Sparsity trimming
-io_slim_dtm <- removeSparseTerms(io_dtm, .97)
-io_slim_dtm_tbl <- io_slim_dtm %>% as.matrix %>% as_tibble
+io_slim_dtm <- removeSparseTerms(io_dtm, .995)
+
+# Check N/k ratio and adjust sparsity threshold if needed
+n_docs <- nrow(io_slim_dtm)
+k_terms <- ncol(io_slim_dtm)
+n_docs / k_terms
+#  2.291209
+
+# Visualization
+# Word cloud
+wordCounts <- slam::col_sums(io_dtm)
+wordNames <- colnames(io_dtm)
+wordcloud::wordcloud(wordNames, wordCounts, max.words = 50)
 
 
 # Analysis
@@ -111,22 +150,32 @@ topic_model <- stm(dfm2stm$documents,
                    dfm2stm$vocab, 
                    7)
 
-# Visualization
-# Word cloud
-wordCounts <- colSums(io_slim_dtm_tbl)
-wordNames <- names(io_slim_dtm_tbl)
-wordcloud::wordcloud(wordNames, wordCounts, max.words = 50)
+topic_probs <- topic_model$theta
+assigned_topic <- apply(topic_probs, 1, which.max)
+assigned_prob <- apply(topic_probs, 1, max)
+retained_doc_id <- which(slam::row_sums(io_slim_dtm) > 0)
 
-# Publication
-# Interpretation of topic analysis
-labelTopics(topic_model, n=10)
-findThoughts(topic_model, texts=week12_tbl$documents, n=3)
-png("../figs/topic_model_summary.png", width = 1200, height = 900, res = 150)
-par(mar = c(4, 4, 1, 1))
-plot(topic_model, type = "summary", n = 5)
-dev.off()
-topicCorr(topic_model)
-png("../figs/topic_corr_plot.png", width = 1200, height = 900, res = 150)
-par(mar = c(4, 4, 1, 1))
-plot(topicCorr(topic_model))
-dev.off()
+topic_labels <- c(
+  "1" = "AI & Career Advice",
+  "2" = "Job Market & Application",
+  "3" = "SIOP & Programs",
+  "4" = "Organizations & Job Market",
+  "5" = "Career Advice & Years & Application",
+  "6" = "PhD & People Analytics",
+  "7" = "Work & IO Field"
+)
+
+topics_tbl <- tibble(
+  doc_id = retained_doc_id,
+  original = week12_tbl$title[retained_doc_id],
+  topic = assigned_topic,
+  topic_label = topic_labels[as.character(assigned_topic)],
+  probability = assigned_prob,
+  upvotes = week12_tbl$upvotes[retained_doc_id]
+)
+
+# Explain in detail the specific reasoning process you used to determine the final number of topics. 
+
+# Explain in detail the specific reasoning process for the topic labels you selected.
+
+set.seed(1234)

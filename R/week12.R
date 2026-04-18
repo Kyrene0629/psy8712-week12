@@ -179,3 +179,89 @@ topics_tbl <- tibble(
 # Explain in detail the specific reasoning process for the topic labels you selected.
 
 set.seed(1234)
+
+ml_doc_id <- topics_tbl$doc_id
+y <- topics_tbl$upvotes
+
+x_tokens <- as.matrix(io_slim_dtm[ml_doc_id, ])
+
+x_topics <- model.matrix(
+  ~ factor(topic) + probability,
+  data = topics_tbl)[, -1]
+
+x_tokens_topics <- cbind(x_tokens, x_topics)
+
+train_id <- createDataPartition(y, p = .80, list = FALSE)[, 1]
+test_id <- setdiff(seq_along(y), train_id)
+
+fit_tokens <- train(
+  x = x_tokens[train_id, ],
+  y = y[train_id],
+  method = "glmnet",
+  trControl = trainControl(method = "cv", 
+                           number = 5),
+  tuneGrid = expand.grid(alpha = c(0, 0.5, 1), 
+                         lambda = 10 ^ seq(-3, 
+                                           1, 
+                                           length.out = 25)), 
+                         metric = "RMSE")
+
+fit_tokens_topics <- train(
+  x = x_tokens_topics[train_id, ],
+  y = y[train_id],
+  method = "glmnet",
+  trControl = trainControl(method = "cv", 
+                           number = 5),
+  tuneGrid = expand.grid(alpha = c(0, 0.5, 1), 
+                         lambda = 10 ^ seq(-3, 
+                                           1, 
+                                           length.out = 25)), 
+                         metric = "RMSE")
+
+best_cv <- function(fit) {
+  fit$results %>%
+    filter(
+      alpha == fit$bestTune$alpha,
+      lambda == fit$bestTune$lambda
+    ) %>%
+    select(alpha, lambda, RMSE, Rsquared, MAE)
+}
+
+cv_results_tbl <- bind_rows(
+  best_cv(fit_tokens) %>%
+    mutate(model = "Tokens only", .before = 1),
+  best_cv(fit_tokens_topics) %>%
+    mutate(model = "Tokens + topics", .before = 1)
+)
+
+pred_tokens <- predict(fit_tokens, newdata = x_tokens[test_id, ])
+pred_tokens_topics <- predict(fit_tokens_topics, newdata = x_tokens_topics[test_id, ])
+
+holdout_metrics <- function(pred, obs) {
+  out <- caret::postResample(pred = pred, obs = obs)
+  tibble(
+    RMSE = unname(out["RMSE"]),
+    Rsquared = unname(out["Rsquared"]),
+    MAE = mean(abs(pred - obs))
+  )
+}
+
+holdout_results_tbl <- bind_rows(
+  holdout_metrics(pred_tokens, y[test_id]) %>%
+    mutate(model = "Tokens only", .before = 1),
+  holdout_metrics(pred_tokens_topics, y[test_id]) %>%
+    mutate(model = "Tokens + topics", .before = 1)
+)
+
+holdout_predictions_tbl <- tibble(
+  doc_id = topics_tbl$doc_id[test_id],
+  observed_upvotes = y[test_id],
+  pred_tokens_only = pred_tokens,
+  pred_tokens_topics = pred_tokens_topics,
+  topic = topics_tbl$topic[test_id],
+  topic_probability = topics_tbl$probability[test_id]
+)
+
+cv_results_tbl
+holdout_results_tbl
+head(holdout_predictions_tbl, 20)

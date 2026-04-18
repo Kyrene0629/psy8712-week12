@@ -90,6 +90,12 @@ io_dtm <- bind_rows(io_unigram_tbl, io_bigram_tbl) %>%
 
 # Sparsity trimming
 io_slim_dtm <- removeSparseTerms(io_dtm, .97)
+io_slim_dtm_tbl <- io_slim_dtm %>% as.matrix %>% as_tibble
+
+# Word cloud!
+wordCounts <- colSums(io_slim_dtm_tbl)
+wordNames <- names(io_slim_dtm_tbl)
+wordcloud::wordcloud(wordNames, wordCounts, max.words = 50)
 
 # Visualization
 

@@ -14,6 +14,7 @@ library(caret)
 library(Matrix)
 
 # Data Import and Cleaning
+# I used this to download at least the last year of posts from r/IOPsychology.
 # url <- "https://www.reddit.com/r/IOPsychology/new.json?limit=100"
 # after <- NULL
 # every_post <- list()
@@ -33,13 +34,14 @@ library(Matrix)
 #   if (is.null(after) || oldest_post <= cutoff_time) {
 #     done <- TRUE
 #   }
-#   
+#   # this reduces the chance of rate-limiting by Reddit
 #   Sys.sleep(1)
 # }
 # 
 # reddit_posts <- bind_rows(every_post)
 # saveRDS(reddit_posts, "../data/reddit_posts.rds")
 # 
+# in the tibble, I only keep varibales that are required, comvert unix time to normal time, keep opsts from last year, and. ake sure it only has only upvotes and title
 # week12_tbl <- reddit_posts %>%
 #   select(title, upvotes = ups, created_utc) %>%
 #   mutate(created_utc = as.POSIXct(created_utc, origin = "1970-01-01", tz = "UTC")) %>%
@@ -51,10 +53,10 @@ library(Matrix)
 reddit_posts <- readRDS("../data/reddit_posts.rds")
 week12_tbl <- read_csv("../data/week12_tbl.csv")
 
-# Create corpus
+# Create corpus from post titles, so later the original and preproccessed version can be compared.
 io_corpus_original <- VCorpus(VectorSource(week12_tbl$title))
 
-# Preprocessing using tm and qdap
+# Preprocessing using tm and qdap by building the transformer that removes references (IO). These terms appear frequently but do not distinguish the posts meaningfully
 remove_io_terms <- content_transformer(function(x) {
   x %>%
     str_replace_all("\\bi\\s*/\\s*o\\s+psychology\\b", " ") %>%
@@ -69,6 +71,9 @@ remove_io_terms <- content_transformer(function(x) {
     str_replace_all("\\bindustrial[- ]organizational\\s+psychology\\b", " ")
 })
 
+# I then created the preproccessed corpus. First, I expand abbreviations and contractions. Then, lowercase text so they are not case-sensitive. 
+# Then, I use the cutome transformer to remove IO terms. Then, I remove numbers and punctuation becuase they are not that meaningful for post titles.
+# Then, I lemmatize after punctuation & number removal, so words are simplified. I then remove stopwords after lemmatization. finally, I strip the extra whitespace at the end
 io_corpus <- io_corpus_original %>%
   tm_map(content_transformer(replace_abbreviation)) %>%
   tm_map(content_transformer(replace_contraction)) %>%
@@ -80,7 +85,8 @@ io_corpus <- io_corpus_original %>%
   tm_map(removeWords, stopwords("en")) %>%
   tm_map(stripWhitespace)
 
-# Function to compare the same randomly selected row from two corpora
+# Function to compare the same randomly selected row from original corpus and the processed corpus.
+# I repeatedly check whether preprocessing is doing its work cleanly
 compare_them <- function(corpus_1, corpus_2) {
   row_id <- sample(seq_along(corpus_1), 1)
   
@@ -90,7 +96,6 @@ compare_them <- function(corpus_1, corpus_2) {
   cat("Processed:\n")
   cat(as.character(corpus_2[[row_id]]), "\n")
 }
-
 compare_them(io_corpus_original, io_corpus)
 
 # Create a document id so each title stays linked to its row
@@ -99,17 +104,17 @@ io_text_tbl <- tibble(
   text = sapply(io_corpus, as.character)
 )
 
-# Unigrams
+# Unigrams are used to capture individual high-frequency concepts.
 io_unigram_tbl <- io_text_tbl %>%
   unnest_tokens(term, text, token = "words") %>%
   count(document, term)
 
-# Bigrams
+# Bigrams are used ton capture multiword concepts
 io_bigram_tbl <- io_text_tbl %>%
   unnest_tokens(term, text, token = "ngrams", n = 2) %>%
   count(document, term)
 
-# Combine into one DTM called io_dtm
+# Combine into one DTM called io_dtm and filter out any blank or missing terms that might result from preprocessing.
 io_dtm <- bind_rows(io_unigram_tbl, io_bigram_tbl) %>%
   filter(!is.na(term), term != "") %>%
   group_by(document, term) %>%
@@ -119,7 +124,7 @@ io_dtm <- bind_rows(io_unigram_tbl, io_bigram_tbl) %>%
 # Sparsity trimming
 io_slim_dtm <- removeSparseTerms(io_dtm, .995)
 
-# Check N/k ratio and adjust sparsity threshold if needed
+# Check N/k ratio and adjust sparsity threshold to 0.995 to make it into the range 2:1 to 3:1
 n_docs <- nrow(io_slim_dtm)
 k_terms <- ncol(io_slim_dtm)
 n_docs / k_terms
@@ -127,34 +132,38 @@ n_docs / k_terms
 
 # Visualization
 # Word cloud
+# I summrize total term frequencies across the full DTM and then produce a workdcloud. This can help me see what dominates discussion (only the words)
 wordCounts <- slam::col_sums(io_dtm)
 wordNames <- colnames(io_dtm)
 wordcloud::wordcloud(wordNames, wordCounts, max.words = 50)
 
 
 # Analysis
-# Topic analysis 
+# Top Analysis
+# I concert the dtm and then search for all possible topics. I then save the topic result plot into figs subfoolder, adjust the margins, draw the plot and close the graph so the file is actually written.
 dfm2stm <- readCorpus(io_slim_dtm, type="slam")
 kresult <- searchK(
   dfm2stm$documents,
   dfm2stm$vocab,
-  K = seq(2, 20, by = 2)
+  K = 2:10
 )
-
 png("../figs/kresult_plot.png", width = 1200, height = 900, res = 150)
 par(mar = c(4, 4, 1, 1))
 plot(kresult)
 dev.off()
 
+# I fit the final topic model with 7 topics, so each document is a probability distribution of its own and each topic is a probability distribution of its own. 
+# I then extract the topic probability and find tipics with their highest probability for each doc and give topic numbers. Also, I extract the highest probability and give that probability. 
 topic_model <- stm(dfm2stm$documents, 
                    dfm2stm$vocab, 
                    7)
-
 topic_probs <- topic_model$theta
 assigned_topic <- apply(topic_probs, 1, which.max)
 assigned_prob <- apply(topic_probs, 1, max)
+# make sure the original document ids still exist after preprocessing
 retained_doc_id <- which(slam::row_sums(io_slim_dtm) > 0)
 
+# based on top words, I created labels and assign them into topic labels
 topic_labels <- c(
   "1" = "AI & Career Advice",
   "2" = "Job Market & Application",
@@ -165,6 +174,7 @@ topic_labels <- c(
   "7" = "Work & IO Field"
 )
 
+# Then, I created the tibble topics_tbl that has doc_id, original, topic, topic_label, probability, upvotes.
 topics_tbl <- tibble(
   doc_id = retained_doc_id,
   original = week12_tbl$title[retained_doc_id],
@@ -178,34 +188,38 @@ topics_tbl <- tibble(
 
 # Explain in detail the specific reasoning process for the topic labels you selected.
 
+# set seed for reproducibility
 set.seed(1234)
 
+# for machine leanring part, I first define the id and outcomes
 ml_doc_id <- topics_tbl$doc_id
 y <- topics_tbl$upvotes
 
+# I create predictors matrxi use the token counts & create topic
 x_tokens <- as.matrix(io_slim_dtm[ml_doc_id, ])
+x_topics <- model.matrix( # turn those into a numeric matrix
+  ~ factor(topic) + probability, # turn it into dummy variables and include the ptobability
+  data = topics_tbl)[, -1] # remove the intercept
+x_tokens_topics <- cbind(x_tokens, x_topics) # combine them so I can compare token alone against tokens-plus-topics
 
-x_topics <- model.matrix(
-  ~ factor(topic) + probability,
-  data = topics_tbl)[, -1]
-
-x_tokens_topics <- cbind(x_tokens, x_topics)
-
+# create training and holdout sets
 train_id <- createDataPartition(y, p = .80, list = FALSE)[, 1]
 test_id <- setdiff(seq_along(y), train_id)
 
+# fit the token-alone elastic net model
 fit_tokens <- train(
   x = x_tokens[train_id, ],
   y = y[train_id],
   method = "glmnet",
   trControl = trainControl(method = "cv", 
-                           number = 5),
+                           number = 5), # 5-fold cross-validation
   tuneGrid = expand.grid(alpha = c(0, 0.5, 1), 
                          lambda = 10 ^ seq(-3, 
                                            1, 
                                            length.out = 25)), 
                          metric = "RMSE")
 
+# fit the tokens-plus-topics model, this can isolate the effect of adding topic information
 fit_tokens_topics <- train(
   x = x_tokens_topics[train_id, ],
   y = y[train_id],
@@ -217,7 +231,7 @@ fit_tokens_topics <- train(
                                            1, 
                                            length.out = 25)), 
                          metric = "RMSE")
-
+# create a fucntion that can extract the cross-validated results, which can be used later in the CV comparison table for both models.
 best_cv <- function(fit) {
   fit$results %>%
     filter(
@@ -227,6 +241,7 @@ best_cv <- function(fit) {
     select(alpha, lambda, RMSE, Rsquared, MAE)
 }
 
+# I use this comparison table to report CV values for both the token-alone and tokens-plus-topics models
 cv_results_tbl <- bind_rows(
   best_cv(fit_tokens) %>%
     mutate(model = "Tokens only", .before = 1),
@@ -234,9 +249,11 @@ cv_results_tbl <- bind_rows(
     mutate(model = "Tokens + topics", .before = 1)
 )
 
+# for out-of-sample performance, I generate predictions on the holdout test set
 pred_tokens <- predict(fit_tokens, newdata = x_tokens[test_id, ])
 pred_tokens_topics <- predict(fit_tokens_topics, newdata = x_tokens_topics[test_id, ])
 
+# create a fucntion that can extract the holdout prediction estimates, which can be used later in the holdout comparison table for both models.
 holdout_metrics <- function(pred, obs) {
   out <- caret::postResample(pred = pred, obs = obs)
   tibble(
@@ -246,6 +263,7 @@ holdout_metrics <- function(pred, obs) {
   )
 }
 
+# I use this comparison table to report holdout prediction for both the token-alone and tokens-plus-topics models
 holdout_results_tbl <- bind_rows(
   holdout_metrics(pred_tokens, y[test_id]) %>%
     mutate(model = "Tokens only", .before = 1),
@@ -253,6 +271,7 @@ holdout_results_tbl <- bind_rows(
     mutate(model = "Tokens + topics", .before = 1)
 )
 
+# I then save the holdout prediction results for each doc into a tibble so that i can see whether the tokens-plus-topics model improve prediction for some posts, what topic and what probability the topic model has
 holdout_predictions_tbl <- tibble(
   doc_id = topics_tbl$doc_id[test_id],
   observed_upvotes = y[test_id],
@@ -262,6 +281,7 @@ holdout_predictions_tbl <- tibble(
   topic_probability = topics_tbl$probability[test_id]
 )
 
+# print output and show first 20 holdout predictions
 cv_results_tbl
 holdout_results_tbl
 head(holdout_predictions_tbl, 20)

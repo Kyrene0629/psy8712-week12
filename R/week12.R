@@ -21,7 +21,7 @@ library(Matrix)
 # cutoff_time <- Sys.time() - as.difftime(365, units = "days")
 # done <- FALSE
 # 
-# while (!done) {
+# repeat { # I use repeat() to create an infinite loop so it stops when I stop it with break. Keep requesitng pages and save each page until there are no more pages or reach to the point that it older than one year 
 #   full_url <- paste0(url, if (!is.null(after)) paste0("&after=", after) else "")
 #   res <- fromJSON(full_url)
 #   posts <- res$data$children$data %>%
@@ -32,9 +32,9 @@ library(Matrix)
 #   
 #   oldest_post <- min(as.POSIXct(posts$created_utc, origin = "1970-01-01", tz = "UTC"))
 #   if (is.null(after) || oldest_post <= cutoff_time) {
-#     done <- TRUE
+#     break
 #   }
-#   # this reduces the chance of rate-limiting by Reddit
+#   # this reduces the chance of rate limits
 #   Sys.sleep(1)
 # }
 # 
@@ -167,7 +167,7 @@ retained_doc_id <- which(slam::row_sums(io_slim_dtm) > 0)
 topic_labels <- c(
   "1" = "AI & Career Advice",
   "2" = "Job Market & Application",
-  "3" = "SIOP & Programs",
+  "3" = "SIOP & Different Programs",
   "4" = "Organizations & Job Market",
   "5" = "Career Advice & Years & Application",
   "6" = "PhD & People Analytics",
@@ -185,8 +185,17 @@ topics_tbl <- tibble(
 )
 
 # Explain in detail the specific reasoning process you used to determine the final number of topics. 
+# I used searchK() to compare models from K = 2 to K = 10. The reason I started at 2 is because K = 1 would not meaninhfully separate the posts into different themes. 
+# In the result, heldout is best at K = 7, heldout = -4.717701. Other diagnostics look better with either smaller or larger K values
+# I then choose 7 because it gives the balance between model performance and interpretability because it separates the major themes well and not make the topics too broad or too narrow
 
-# Explain in detail the specific reasoning process for the topic labels you selected.
+
+# Explain in detail the specific reasoning process for the topic labels you selected
+# I selected the topic labels by looking at the top words in each of the topics , so I can know what is the content
+# I then make sure these words match with the actual titles in that topic
+# I used the top words to figure out the main idea and then give each a short name to represent 
+# I also make the label easy to understand, concise, and close to what the posts in each topic are really about (2 to 5 words) 
+
 
 # set seed for reproducibility
 set.seed(1234)
@@ -285,3 +294,21 @@ holdout_predictions_tbl <- tibble(
 cv_results_tbl
 holdout_results_tbl
 head(holdout_predictions_tbl, 20)
+
+# Comment:
+# cv_results_tbl
+# model             alpha     lambda     RMSE    Rsquared      MAE
+# Tokens only         1         10     21.27418 0.006764069 11.89745
+# Tokens + topics     1         10.    21.83619 0.003940387 11.90436
+
+# holdout_results_tbl
+# A tibble: 2 × 4
+# model            RMSE Rsquared   MAE
+# Tokens only      11.8       NA  9.29
+# Tokens + topics  11.8       NA  9.29
+
+# The CV results show that both models perform poorly, both R squred are really close to 0. 
+# The second model (tokens with topics) is a bit worse than the first model, which means adding topics do not improve predictions.
+# The holdout predictions show that they have the same performance & same prediction. Therefore, adding topics do not improve holdout prediction at all.
+# I used the elastic net tuning, but alpha = 1 & lambda = 10, so the tuning results show that the best model would be lasso with strong regularization not elastic net.
+# lasso has strong penalty which can shrink most coefficients toward zero so predictions become almost constant for the out-of-sample performance.

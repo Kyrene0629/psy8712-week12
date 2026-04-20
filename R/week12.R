@@ -5,13 +5,13 @@ library(tm)
 library(qdap)
 library(textstem)
 library(tidytext)
-library(parallel)
-library(doParallel)
-library(tictoc)
+# library(parallel) did not use
+# library(doParallel) did not use
+# library(tictoc) did not use
 library(stm)
 library(jsonlite)
 library(caret)
-library(Matrix)
+# library(Matrix) did not use
 
 # Data Import and Cleaning
 # I used this to download at least the last year of posts from r/IOPsychology.

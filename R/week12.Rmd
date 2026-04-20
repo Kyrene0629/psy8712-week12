@@ -155,6 +155,7 @@ n_docs / k_terms
 wordCounts <- slam::col_sums(io_dtm)
 wordNames <- colnames(io_dtm)
 wordcloud::wordcloud(wordNames, wordCounts, max.words = 50)
+# interpret: the corpus is dominated by career/job-discussion content
 ```
 
 # Analysis

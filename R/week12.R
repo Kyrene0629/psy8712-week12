@@ -41,7 +41,7 @@ library(Matrix)
 # reddit_posts <- bind_rows(every_post)
 # saveRDS(reddit_posts, "../data/reddit_posts.rds")
 # 
-# in the tibble, I only keep varibales that are required, comvert unix time to normal time, keep opsts from last year, and. ake sure it only has only upvotes and title
+# in the tibble, I only keep varibales that are required, convert unix time to normal time, keep posts from last year, and make sure it only has only upvotes and title
 # week12_tbl <- reddit_posts %>%
 #   select(title, upvotes = ups, created_utc) %>%
 #   mutate(created_utc = as.POSIXct(created_utc, origin = "1970-01-01", tz = "UTC")) %>%
@@ -152,8 +152,9 @@ par(mar = c(4, 4, 1, 1))
 plot(kresult)
 dev.off()
 
-# I fit the final topic model with 7 topics, so each document is a probability distribution of its own and each topic is a probability distribution of its own. 
-# I then extract the topic probability and find tipics with their highest probability for each doc and give topic numbers. Also, I extract the highest probability and give that probability. 
+# I fit the final topic model with 7 topics.
+# I then extract theta, the document-topic probability matrix and assigne it to topic_probs so each row is one document and each column is one topic
+# For each document, I can identify topics with their highest probability and extract the probability of that most likely topics
 topic_model <- stm(dfm2stm$documents, 
                    dfm2stm$vocab, 
                    7)
@@ -165,16 +166,16 @@ retained_doc_id <- which(slam::row_sums(io_slim_dtm) > 0)
 
 # based on top words, I created labels and assign them into topic labels
 topic_labels <- c(
-  "1" = "AI & Career Advice",
-  "2" = "Job Market & Application",
-  "3" = "SIOP & Different Programs",
-  "4" = "Organizations & Job Market",
-  "5" = "Career Advice & Years & Application",
-  "6" = "PhD & People Analytics",
-  "7" = "Work & IO Field"
+  "1" = "Programs' Value & Degree values",
+  "2" = "Research Opportunities & Helps",
+  "3" = "People Analytics Careers",
+  "4" = "Career Advice For Graduate",
+  "5" = "Job Market",
+  "6" = "Biweekly Discussion",
+  "7" = "IO Psychologists Roles & Field Questions"
 )
 
-# Then, I created the tibble topics_tbl that has doc_id, original, topic, topic_label, probability, upvotes.
+# Then, I created the tibble topics_tbl that has doc_id, original, topic, topic_label, probability, upvotes
 topics_tbl <- tibble(
   doc_id = retained_doc_id,
   original = week12_tbl$title[retained_doc_id],
@@ -184,18 +185,17 @@ topics_tbl <- tibble(
   upvotes = week12_tbl$upvotes[retained_doc_id]
 )
 
-# Explain in detail the specific reasoning process you used to determine the final number of topics. 
-# I used searchK() to compare models from K = 2 to K = 10. The reason I started at 2 is because K = 1 would not meaninhfully separate the posts into different themes. 
-# In the result, heldout is best at K = 7, heldout = -4.717701. Other diagnostics look better with either smaller or larger K values
-# I then choose 7 because it gives the balance between model performance and interpretability because it separates the major themes well and not make the topics too broad or too narrow
-
+# Explain in detail the specific reasoning process you used to determine the final number of topics 
+# I use searchK() to compare models from K = 2 to K = 10. The reason I start at 2 is because K = 1 cannot meaningfully separate the posts into different themes
+# I then compare the heldout likelihood, semantic coherence (semcoh), exclusivity (exclus), and residual-related measures
+# In the results, heldout is best at K = 7 (heldout = -4.717701). At K = 7, residual is also small (1.5568) and exclusivity is pretty high (9.437377), which suggests the topics are distinct enough to interpret
+# I then choose 7 because it gives the best balance between model performance and interpretability because it separates the major themes well and does not make the topics too broad or too narrow
 
 # Explain in detail the specific reasoning process for the topic labels you selected
-# I selected the topic labels by looking at the top words in each of the topics , so I can know what is the content
-# I then make sure these words match with the actual titles in that topic
-# I used the top words to figure out the main idea and then give each a short name to represent 
-# I also make the label easy to understand, concise, and close to what the posts in each topic are really about (2 to 5 words) 
-
+# I select the topic labels by looking at the top words in each topic, so I can understand what the main content in each topic is
+# I then check whether those top words match the actual post titles that are assigned to that topic
+# I use the top words and the titles together to figure out the main idea of each topic and then give each topic a short label to represent the idea
+# I also make the labels easy to understand, concise, and close to what the posts in each topic are about (2 to 5 words)
 
 # set seed for reproducibility
 set.seed(1234)

@@ -225,7 +225,7 @@ I use the top words and the titles together to figure out the main idea of each 
 I also make the labels easy to understand, concise, and close to what the posts in each topic are about (2 to 5 words)
 
 # Mahcine Learning
-```{r}
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 # for machine leanring part, I first define the id and outcomes
 ml_doc_id <- topics_tbl$doc_id
 y <- topics_tbl$upvotes

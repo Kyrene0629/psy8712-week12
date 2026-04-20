@@ -74,7 +74,7 @@ week12_tbl <- read_csv("../data/week12_tbl.csv")
 # Create corpus from post titles, so later the original and preproccessed version can be compared.
 io_corpus_original <- VCorpus(VectorSource(week12_tbl$title))
 
-# Preprocessing using tm and qdap by building the transformer that removes references (IO). These terms appear frequently but do not distinguish the posts meaningfully
+# Preprocessing using tm and qdap by building the transformer that removes references (IO). These terms appear frequently but do not distinguish the posts meaningfully. I think this is not too aggresive. regex might be more apprioproate here?
 remove_io_terms <- content_transformer(function(x) {
   x %>%
     str_replace_all("\\bi\\s*/\\s*o\\s+psychology\\b", " ") %>%
@@ -108,13 +108,9 @@ io_corpus <- io_corpus_original %>%
 # Function to compare the same randomly selected row from original corpus and the processed corpus.
 # I repeatedly check whether preprocessing is doing its work cleanly
 compare_them <- function(corpus_1, corpus_2) {
-  row_id <- sample(seq_along(corpus_1), 1)
-  
-  cat("Row selected:", row_id, "\n\n")
-  cat("Original:\n")
-  cat(as.character(corpus_1[[row_id]]), "\n\n")
-  cat("Processed:\n")
-  cat(as.character(corpus_2[[row_id]]), "\n")
+   i <- sample(1:length(corpus_1), 1)
+  print(corpus_1[[i]]$content)
+  print(corpus_2[[i]]$content)
 }
 compare_them(io_corpus_original, io_corpus)
 ```

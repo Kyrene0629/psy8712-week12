@@ -303,4 +303,4 @@ write_csv(table1_tbl, "../out/table1.csv")
 ```
 
 # Comment:
-adding topics improves cv results but does not improve out-of-sample performance prediction. Both models perform poorly but the tokens plus topics model is slightly worse in the holdout set. CV improvement does not mean it can be generalize to new data.
+adding topics improves cv results but does not improve out-of-sample performance prediction. Both models perform poorly but the tokens plus topics model is slightly worse in the holdout set. CV improvement does not mean it can be generalized to new data.
